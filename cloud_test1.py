@@ -84,5 +84,37 @@ print(f"{a}{op}{b}={c}")
 
 
 #%%
+# 조건문과 반복문
 
+a=10
+if a>= 10:
+    print('a는 10보다 큽니다')
+else:
+    print('a는 10보다 작습니다')
 
+for i in range(0, 9+1, 1): # for(int i=0; i<10; i++)
+    print(i)
+for i in [1,2,3]:
+    print(i)
+for i in (1,2,3):
+    print(i)
+
+#%%
+print('---'*20)
+a1= "10"*10
+print(a1)
+
+a2=''
+for i in range(1, 10+1, 1):
+    print(i)
+    a2+='10'
+print(a2)
+print(a1==a2)
+print('---'*20)
+
+#%%
+# 구구단 제작해보기
+
+for i in range(1, 9+1, 1):
+    for j in range(1, 9+1, 1):
+        print(i*j)
