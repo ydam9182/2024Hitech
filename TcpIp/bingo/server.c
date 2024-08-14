@@ -37,8 +37,8 @@ struct Clnt{ // 클라이언트의 구성 요소(IP, PORT, 이름, 레디상태,
 	int R;//0은 준비중 1은 준비완료 2는 게임중 3은 게임중+
 	int Bingo;// 빙고 갯수를 나타냄
 };
-struct Clnt C[MAX_CLNT]; //what a massive
-char msgQ[5][NAME_SIZE+BUF_SIZE+1]; //SND쓰레드와 RCV쓰레드가 함께 사용하므로 전역변수
+struct Clnt C[MAX_CLNT]; //클라이언트를 256명까지 받을 수 있음
+char msgQ[5][NAME_SIZE+BUF_SIZE+1]; //SND쓰레드와 RCV쓰레드가 함께 사용하므로 전역변수, 채팅을 최근 5개 내역까지 출력하는 문자열
 
 pthread_mutex_t mutx; // 뮤텍스 생성
 pthread_t t_id; // handle_clnt를 쓰레드화 
@@ -81,6 +81,7 @@ int main(int argc, char* argv[])
 	
 
 	// 클라이언트들을 accept하는것보다 보드출력과 게임 컨트롤을 먼저 해줘야 매끄럽게 진행됨
+	// while명령문이 위에 있으면 위에서 자원을 잡고 있기 때문에 쓰레드 자체가 생성이 안되기 때문
 	pthread_create(&t_id2, NULL, status_board, (void*)&clnt_sock);
 	pthread_detach(t_id2);
 	
@@ -107,11 +108,13 @@ int main(int argc, char* argv[])
 		clnt_cnt++; // 클라이언트 수 추가
 	}
 
-	// 게임이 끝나면 서버를 닫아버림
-	if(Game_on!=2){
+	// 게임이 끝나면 새로 시작할지 물어봄 -> 아래쪽에서 구현합시댜
+	if(Game_on == 2){
+		printf("Restart?");
+	}
+
 	close(serv_sock);
 	return 0;
-	}
 }
 
 void error_handling(char* msg){ // 오류발생 시 에러 메세지 출력
@@ -126,108 +129,98 @@ void* handle_clnt(void* arg) {//클라이언트를 1대1로 담당하는 쓰레�
 	//int win_check=0; //전역변수로  되었음
 	char msg[1+NAME_SIZE+BUF_SIZE];	//handle_clnt의 메세지 수신부분
 	send_msg("",1,0);//서로 연결이 확정되면 의미없는 문장을 보내서, 클라이언트의 RCV와 game_print를 활성화시킨다
+
 	while ((str_len = read(clnt_sock, msg, sizeof(msg))) != 0)
 	{	
 		//입력에 대한 기본처리
-		printf("[Debug]red is it correct? :%s\n",msg);
-		char tmpName[10]; //
-			for(int i=0,j=0;i<10;i++){
-			if(msg[i+1]!=32) {tmpName[j++]=msg[i+1];}
-			}
-		char tmpMsg[100]; //
-			int k;
-			for(k=0;k<100;k++){
-			tmpMsg[k]=msg[k+11];
-			}
-			tmpMsg[k]='\0';
+		printf("[Debug]read is it correct? :%s\n", msg);
+
+		char tmpName[10]; // 이름을 파싱할 부분 = 이름
+			for(int i=0,j=0;i<10;i++)
+				if(msg[i+1]!=32)
+					tmpName[j++]=msg[i+1];
+
+		char tmpMsg[100]; // 메세지를 파싱할 부분 = 실제 메세지
+		int k;
+		for(k=0;k<100;k++)
+			tmpMsg[k]=msg[k+11]; // msg[0] = 제어문, msg[1~10] = name, msg[11~] = 실제 메세지
+		tmpMsg[k]='\0'; // 메세지를 보내고 마지막은 null로 문장을 끝내줌
 			
 	
-		 //순서1.W로 시작하는 숫자내역이왔을때 처리. 맨위에 있어야 무승부 처리 순서에 올바르다.
-		if(msg[0]==87)
-		{
-			for(int i=0; i<clnt_cnt;i++){
-				if(tmpMsg[0]==49&&(strcmp(C[i].NAME,tmpName)==0))
-				{
+		 //순서1.W로 시작하는 숫자내역이왔을때 처리. 맨위에 있어야 무승부 처리 용이
+		if(msg[0]=='W'){
+			for(int i=0; i<clnt_cnt; i++){
+				if((tmpMsg[0]=='1') && (strcmp(C[i].NAME,tmpName)==0)){ 
+					// 클라이언트에게 받은 승리플래그가 빙고이면(클라이언트가 빙고3개를 달성함) 빙고 변수를 올려줌.  
 					printf("[Debug]BINGO!!");
 					C[i].Bingo=1;
 				}
 			}
+
 			pthread_mutex_lock(&mutx);
 			win_check++;//반드시 값처리가 끝난뒤 win_check을 올려줘야한다.
 			printf("[Debug]win_check++\n");
 			pthread_mutex_unlock(&mutx);
 		}
+
 		//순서2.C로 시작하는 채팅내역이오면
-		if(msg[0]==67)
-		{
-			char tmpNameMsg[111];
-			//tmpNameMsg[sizeof(tmpName)+sizeof(tmpMsg)] = '\0';
+		if(msg[0]=='C'){
+			char tmpNameMsg[111]; //tmpNameMsg[sizeof(tmpName)+sizeof(tmpMsg)+sizeof(msg[0])];
+			
 			sprintf(tmpNameMsg,"%s%s",tmpName,tmpMsg);
-			
-			
 			strcpy(msgQ[4],msgQ[3]);
 			strcpy(msgQ[3],msgQ[2]);
 			strcpy(msgQ[2],msgQ[1]);
 			strcpy(msgQ[1],msgQ[0]);
-			strcpy(msgQ[0],tmpNameMsg);
+			strcpy(msgQ[0],tmpNameMsg); // 채팅내역이 들어오면 계속해서 쌓이게끔 만들기
 						
 			char sendMsg[BUF_SIZE+NAME_SIZE+1+1];
-			sprintf(sendMsg,"%s%10s%s","C",tmpName,tmpMsg);
-
-			//sprintf(tmpNameMsg,"%s",tmpMsg);
-			//send_msg(msgQ[0], 1+NAME_SIZE+BUF_SIZE,1);
-
+			sprintf(sendMsg,"%s%10s%s","C",tmpName,tmpMsg); // 클라이언트쪽에 C제어문과 이름, 메세지 보내기
 			send_msg(sendMsg, 1+NAME_SIZE+BUF_SIZE,11);
 		}
 		
-			//S로 시작하는 네임세팅이 오면
-			if(msg[0]==83)
-			{
-				strcpy(C[clnt_cnt-1].NAME,tmpName);
-			}
-			
-			//R로 시작하는 레디내역이오면
-			if(msg[0]==82) 
-			{
-				for(int i=0; i<clnt_cnt;i++){
-					if(strcmp(C[i].NAME,tmpName)==0){C[i].R++;}
-					//printf("C[i].NAME:%s tmp2:%s tmp:%s\n",C[i].NAME,tmp2,tmp);
-				}
-				send_msg("",1,2);//의미없는문자열을 보내서 클라이언트쪽 화면을 제어해준다
-			}
+		//S로 시작하는 네임세팅이 오면(클라이언트가 처음 접속했을때 이름과 S를 보냄)
+		if(msg[0]=='S')
+			strcpy(C[clnt_cnt-1].NAME,tmpName); // 클라이언트로부터 받은 네임을 현클라이언트의 네임으로 설정
 		
-			//N로 시작하는 숫자내역이오면
-			if(msg[0]==78) 
-			{
-				for(int i=0; i<clnt_cnt;i++)
-				{
-					if(strcmp(C[i].NAME,tmpName)==0)
-					{
-						C[i].R=2;
-						char tmp[1+NAME_SIZE+BUF_SIZE];
-						if(i==clnt_cnt-1){
-							C[0].R=3;
-							sprintf(tmp,"%1s%10s","T",C[0].NAME);
-							send_msg(tmp,1+NAME_SIZE+BUF_SIZE,5);		
-						}
-						else{
-							C[i+1].R=3;
-							sprintf(tmp,"%1s%10s","T",C[i+1].NAME);
-							send_msg(tmp,1+NAME_SIZE+BUF_SIZE,5);		
-						}
-						char tmp2[1+NAME_SIZE+BUF_SIZE];
-						sprintf(tmp2,"%1s%10s%2s","N","SERV",tmpMsg);
-						send_msg(tmp2,1+NAME_SIZE+BUF_SIZE,5);						
-					}		
-				}
+		//R로 시작하는 레디내역이오면
+		if(msg[0]=='R'){
+			for(int i=0; i<clnt_cnt;i++){
+				if(strcmp(C[i].NAME,tmpName)==0)
+					C[i].R++; //클라이언트의 상태를 레디상태로 바꿔줌
 			}
-		///*
+			send_msg("",1,2);//의미없는문자열을 보내서 클라이언트쪽 화면을 제어해준다
+		}
+		
+		//N로 시작하는 숫자내역이오면
+		if(msg[0]==78){
+			for(int i=0; i<clnt_cnt;i++){
+				if(strcmp(C[i].NAME,tmpName)==0){
+					C[i].R=2;
+					char tmp[1+NAME_SIZE+BUF_SIZE];
+					if(i==clnt_cnt-1){
+						C[0].R=3;
+						sprintf(tmp,"%1s%10s","T",C[0].NAME);
+						send_msg(tmp,1+NAME_SIZE+BUF_SIZE,5);		
+					}
+					else{
+						C[i+1].R=3;
+						sprintf(tmp,"%1s%10s","T",C[i+1].NAME);
+						send_msg(tmp,1+NAME_SIZE+BUF_SIZE,5);		
+					}
+
+					char tmp2[1+NAME_SIZE+BUF_SIZE];
+					sprintf(tmp2,"%1s%10s%2s","N","SERV",tmpMsg);
+					send_msg(tmp2,1+NAME_SIZE+BUF_SIZE,5);						
+				}		
+			}
+		}
+		
 		for(int i=0; i<1+NAME_SIZE+BUF_SIZE;i++){
 			msg[i]='\0';
 		}
-		//*/
-		
 	}
+
 	//본인이 담당하면 클라이언트가 끊어졌다면, 서버에서 클라이언트의 정보를 지우고 재설정한다.
 	pthread_mutex_lock(&mutx);
 	for (i = 0; i < clnt_cnt; i++) //eliminated disconnections
@@ -242,9 +235,11 @@ void* handle_clnt(void* arg) {//클라이언트를 1대1로 담당하는 쓰레�
 	}
 	clnt_cnt--;
 	pthread_mutex_unlock(&mutx);
+
 	close(clnt_sock);
 	return NULL;
 }
+
 void* handle_game(void* arg){
 	while(1)
 	{
@@ -322,23 +317,24 @@ void* handle_game(void* arg){
 		pthread_mutex_unlock(&mutx);
 	}
 }
+
 void* status_board(void* arg){
 	system("clear"); // 최초 접속시 1번 클리어
 	while(1){
 	//접속클라이언트 현황
 		printf("CLNT\t|IP\t\t|PORT\t|NAME\t|Ready\t\t|BINGO\t\t|\n");
 		for(int i=0; i<clnt_cnt;i++){
-		printf("%d\t|%s\t|%d\t|%s\t|",i,C[i].IP,C[i].PORT,C[i].NAME);
-		if(C[i].R==0)printf("WAIT\t\t|%d\t\t|\n",C[i].Bingo);
-		if(C[i].R==1)printf("READY\t\t|%d\t\t|\n",C[i].Bingo);
-		if(C[i].R==2)printf("INGAME\t\t|%d\t\t|\n",C[i].Bingo);
-		if(C[i].R==3)printf("TRUN\t\t|%d\t\t|\n",C[i].Bingo);
+			printf("%d\t|%s\t|%d\t|%s\t|",i,C[i].IP,C[i].PORT,C[i].NAME);
+			if(C[i].R==0)printf("WAIT\t\t|%d\t\t|\n",C[i].Bingo);
+			if(C[i].R==1)printf("READY\t\t|%d\t\t|\n",C[i].Bingo);
+			if(C[i].R==2)printf("INGAME\t\t|%d\t\t|\n",C[i].Bingo);
+			if(C[i].R==3)printf("TRUN\t\t|%d\t\t|\n",C[i].Bingo);
 		}
 	//채팅현황
 		printf("\n================================\n");
 		printf("5 recnet msgs\n");
-		for(int i=0; i<5;i++){
-		printf("%d:%s\n",i,msgQ[i]);
+		for(int i=4; i>=0;i--){
+			printf("%d:%s\n",i+1,msgQ[i]);
 		}
 	//게임 현황
 		printf("\n================================\n");
@@ -350,11 +346,14 @@ void* status_board(void* arg){
 		system("clear");
 	}
 }
+
 void send_msg(char* msg, int len, int index) {//index는 디버그용, 아무값이나 넣어도됌
 	int i;
+	
 	pthread_mutex_lock(&mutx);
 	for (i = 0; i < clnt_cnt; i++)
 		write(clnt_socks[i], msg, len);
 	pthread_mutex_unlock(&mutx);
+	
 	printf("[Debug] %d sendALL\n",index);
 }
