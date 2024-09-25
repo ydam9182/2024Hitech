@@ -35,6 +35,7 @@ int main(int argc, char *argv[]){
 	memset(&serv_adr, 0, sizeof(serv_adr));
 	serv_adr.sin_family = AF_INET;
 	serv_adr.sin_addr.s_addr=htonl(INADDR_ANY);
+	printf("%x \n", serv_adr.sin_addr.s_addr);
 	serv_adr.sin_port=htons(atoi(argv[1]));
 
 	if(bind(serv_sock, (struct sockaddr*) &serv_adr, sizeof(serv_adr))==-1)
@@ -48,9 +49,9 @@ int main(int argc, char *argv[]){
 
 		pthread_mutex_lock(&mutx);
 		clnt_socks[clnt_cnt++]=clnt_sock;
-		printf("----- Create Client Count : %d ----\n", clnt_cnt);
-        	for(int i = 0; i < clnt_cnt; i++)
-                	printf("clnt_sock[%d] = %d\n", i, clnt_socks[i]);
+		for(int i=0; i < clnt_cnt; i++)
+			printf("Client array[%d] : %d\n", i, clnt_socks[i]);
+		printf("\n");
 		pthread_mutex_unlock(&mutx);
 
 		pthread_create(&t_id, NULL, handle_clnt, (void *)&clnt_sock);
@@ -61,43 +62,44 @@ int main(int argc, char *argv[]){
 	return 0;
 }
 
+
 void *handle_clnt(void *arg){
-        int clnt_sock = *((int*)arg);
-        int str_len=0, i;
-        char msg[BUF_SIZE];
+	int clnt_sock = *((int*)arg);
+	int str_len=0, i;
+	char msg[BUF_SIZE];
 
-        while((str_len = read(clnt_sock, msg, sizeof(msg)))!=0)
-                send_msg(msg, str_len);
+	while((str_len = read(clnt_sock, msg, sizeof(msg)))!=0)
+		send_msg(msg, str_len);
 
-        pthread_mutex_lock(&mutx);
-        printf("!!!! Remove client !!!! \n");
-        for(i = 0; i<clnt_cnt; i++){
-                if(clnt_sock==clnt_socks[i]){
-                        while(i < clnt_cnt-1){
-                                clnt_socks[i] = clnt_socks[i+1];
+	pthread_mutex_lock(&mutx);
+	for(i = 0; i<clnt_cnt; i++){
+		if(clnt_sock==clnt_socks[i]){
+			printf("Deleted file discripter : %d", clnt_sock);
+			while(i < clnt_cnt-1){
+				clnt_socks[i] = clnt_socks[i+1];
 				i++;
 			}
-                        break;
-                }
-        }
-        printf("Current client count : %d\n", --clnt_cnt);
-        for(i = 0; i < clnt_cnt; i++)
-                printf("clnt_sock[%d] = %d\n", i, clnt_socks[i]);
-        pthread_mutex_unlock(&mutx);
-        close(clnt_sock);
-        return NULL;
+			break;
+		}
+	}
+	clnt_cnt--;
+	printf("    => Current Client count : %d\n\n", clnt_cnt); 
+	pthread_mutex_unlock(&mutx);
+	close(clnt_sock);
+	return NULL;
 }
 
 void send_msg(char * msg, int len){
-        int i;
-        pthread_mutex_lock(&mutx);
-        for(i=0; i<clnt_cnt; i++)
-                write(clnt_socks[i], msg, len);
-        pthread_mutex_unlock(&mutx);
+	int i;
+	pthread_mutex_lock(&mutx);
+	for(i=0; i<clnt_cnt; i++)
+		write(clnt_socks[i], msg, len);
+	pthread_mutex_unlock(&mutx);
 }
 
 void error_handling(char * msg){
-        fputs(msg, stderr);
-        fputc('\n', stderr);
-        exit(1);
+	fputs(msg, stderr);
+	fputc('\n', stderr);
+	exit(1);
 }
+
