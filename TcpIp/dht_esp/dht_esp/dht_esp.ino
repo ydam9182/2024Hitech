@@ -56,9 +56,8 @@ void loop() {
   sprintf(msg, "%d:%dL", (int)humi, (int)temp);
 
   Serial.println("보낸 값 : ")
-  cl.write(msg);
-  clinet.
-  Serial.println();
+  client.write(msg);
+  Serial.println(msg);
   delay(1000);
 
 
