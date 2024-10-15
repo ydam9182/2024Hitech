@@ -1,0 +1,16 @@
+
+{
+  "name": "web_dht",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dht_db_sendState.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.5"
+  }
+}
