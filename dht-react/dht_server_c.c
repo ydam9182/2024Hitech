@@ -28,16 +28,6 @@ void handle_post_state(int clnt_sock, MYSQL *conn);
 int main() {
     // TCP 및 HTTP 서버를 병렬로 실행하기 위해 스레드를 사용
     pthread_t tcp_thread;
-app.get('/api/data', (req, res) => {
-        const query = 'SELECT * FROM temp_humi ORDER BY id DESC LIMIT 1';
-        db.query(query, (err, result) => {
-                if(err){
-                res.status(500).send(err);
-               } else{
-               res.json(result[0]);
-               }
-               });
-        });
     int tcp_result = pthread_create(&tcp_thread, NULL, handle_tcp_arduino, NULL);
     if (tcp_result != 0) {
         error_handling("TCP 스레드 생성 실패");
@@ -224,8 +214,6 @@ void handle_get_data(int clnt_sock, MYSQL *conn) {
     sprintf(data, "{\"temp\": %s, \"humi\": %s}", row[0], row[1]);
 
     // 응답 헤더
-CP_PORT 9100   // 아두이노와 통신할 포트
-
     char header[] = "HTTP/1.1 200 OK\r\n"
                     "Access-Control-Allow-Origin: *\r\n"
                     "Content-Type: application/json\r\n";
@@ -245,41 +233,20 @@ void handle_post_state(int clnt_sock, MYSQL *conn) {
     // 상태를 토글
     state = !state;
     printf("State changed: %d\n", state);
-
-app.get('/api/data', (req, res) => {
-        const query = 'SELECT * FROM temp_humi ORDER BY id DESC LIMIT 1';
-        db.query(query, (err, result) => {
-                if(err){
-                res.status(500).send(err);
-               } else{
-               res.json(result[0]);
-               }
-               });
-        });
-
+    
     // 데이터베이스에 상태 업데이트
     char query[128];
     sprintf(query, "UPDATE temp_humi SET state = %d ORDER BY id DESC LIMIT 1", state);
     if (mysql_query(conn, query)) {
         fprintf(stderr, "UPDATE error: %s\n", mysql_error(conn));
     } else {
-    // 응답 헤더
-    char response[] = "HTTP/1.1 200 OK\r\n"
-                      "Access-Control-Allow-Origin: *\r\n"
-                      "Content-Length: 0\r\n\r\n";
-    write(clnt_sock, response, sizeof(response) - 1);
         printf("State updated in database\n");
     }
-
+    
     // 응답 헤더
     char response[] = "HTTP/1.1 200 OK\r\n"
                       "Access-Control-Allow-Origin: *\r\n"
                       "Content-Length: 0\r\n\r\n";
-    // 응답 헤더
-    char response[] = "HTTP/1.1 200 OK\r\n"
-                      "Access-Control-Allow-Origin: *\r\n"
-                      "Content-Length: 0\r\n\r\n";
-    write(clnt_sock, response, sizeof(response) - 1);
     write(clnt_sock, response, sizeof(response) - 1);
 }
 
